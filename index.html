@@ -1,0 +1,1918 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz Magique de Français 🌟</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Librairie pour les effets de confettis -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <style>
+    @keyframes pulse-fast {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+    .animate-bounce-short {
+      animation: bounce 0.6s ease infinite alternate;
+    }
+    .pop-in {
+      animation: pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes pop {
+      0% { transform: scale(0.8); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-b from-amber-200 via-orange-100 to-yellow-200 min-h-screen flex items-center justify-center p-3 font-sans select-none">
+
+  <div id="app" class="w-full max-w-md"></div>
+
+  <script>
+    // -------------------------------------------------------------
+    // 1. SYNTHÈSE SONORE & LECTURE VOCALE
+    // -------------------------------------------------------------
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playSound(type) {
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+
+      const now = audioCtx.currentTime;
+
+      if (type === 'correct') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, now);
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.3);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      } else if (type === 'wrong') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(110, now + 0.3);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+        osc.start(now);
+        osc.stop(now + 0.3);
+      } else if (type === 'tick') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, now);
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        osc.start(now);
+        osc.stop(now + 0.05);
+      } else if (type === 'win') {
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25, 783.99];
+        notes.forEach((freq, i) => {
+          const noteOsc = audioCtx.createOscillator();
+          const noteGain = audioCtx.createGain();
+          noteOsc.connect(noteGain);
+          noteGain.connect(audioCtx.destination);
+          noteOsc.frequency.setValueAtTime(freq, now + i * 0.1);
+          noteGain.gain.setValueAtTime(0.2, now + i * 0.1);
+          noteGain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.1 + 0.2);
+          noteOsc.start(now + i * 0.1);
+          noteOsc.stop(now + i * 0.1 + 0.2);
+        });
+      }
+    }
+
+    function speakQuestion(text) {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'fr-FR';
+        utterance.pitch = 1.6;
+        utterance.rate = 1.0;
+
+        const voices = window.speechSynthesis.getVoices();
+        const frVoice = voices.find(v => v.lang.includes('fr'));
+        if (frVoice) {
+          utterance.voice = frVoice;
+        }
+
+        window.speechSynthesis.speak(utterance);
+      }
+    }
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
+
+    // -------------------------------------------------------------
+    // 2. LES 240 QUESTIONS INTÉGRÉES
+    // -------------------------------------------------------------
+    const rawQuestionsData = [
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Dans la liste [ maison - école - salon ], quel mot commence par la lettre E ?",
+        "options": ["maison", "école", "salon"],
+        "answer": "école"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve le mot correctement orthographié :",
+        "options": ["une cousine", "une cuisine", "une cuizine"],
+        "answer": "une cuisine"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot vient en PREMIER dans l'alphabet ?",
+        "options": ["Armoire", "Maison", "Salon"],
+        "answer": "Armoire"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Complète la phrase : « Papa garre la ... dans la cour. »",
+        "options": ["douche", "voiture", "cuisine"],
+        "answer": "voiture"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Coche la bonne orthographe du mot :",
+        "options": ["veranda", "véranda", "vrannda"],
+        "answer": "véranda"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve l'intrus (qui n'est pas une pièce de la maison) :",
+        "options": ["chambre", "table", "douche"],
+        "answer": "table"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot commence par la lettre A ?",
+        "options": ["armoire", "balcon", "lit"],
+        "answer": "armoire"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Comment écrit-on le mot pour se laver ?",
+        "options": ["la douch", "la douche", "la dooshe"],
+        "answer": "la douche"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Choisis le mot qui désigne un membre de la famille :",
+        "options": ["oncle", "armoire", "salon"],
+        "answer": "oncle"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot s'écrit avec la lettre « Ç » ?",
+        "options": ["maison", "français", "cuisine"],
+        "answer": "français"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Par quelle lettre commence le mot « Ballon » ?",
+        "options": ["B", "P", "D"],
+        "answer": "B"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Complète : « Nous mangeons dans la salle à ... »",
+        "options": ["manger", "coucher", "laver"],
+        "answer": "manger"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quelle est la bonne écriture du mot ?",
+        "options": ["le balco", "le balcon", "le balko"],
+        "answer": "le balcon"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot désigne un meuble où l'on range les habits ?",
+        "options": ["la douche", "l'armoire", "la fenêtre"],
+        "answer": "l'armoire"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot vient en DERNIER dans l'alphabet parmi : armoire - maison - salon ?",
+        "options": ["armoire", "maison", "salon"],
+        "answer": "salon"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Complète : « Dans le salon, il y a un ... »",
+        "options": ["canapé", "cahier", "crayon"],
+        "answer": "canapé"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve le mot qui manque : [ assiette - ... - verre ]",
+        "options": ["fourchette", "lit", "voiture"],
+        "answer": "fourchette"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Comment écrit-on le mot pour le repas de midi/soir ?",
+        "options": ["le rpa", "le repas", "le repa"],
+        "answer": "le repas"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot commence par la lettre M ?",
+        "options": ["maman", "papa", "oncle"],
+        "answer": "maman"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Coche la bonne orthographe du mot :",
+        "options": ["toilete", "toilette", "toylette"],
+        "answer": "toilette"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Range ces 3 mots dans l'ordre alphabétique : douche - armoire - toilette",
+        "options": ["douche - armoire - toilette", "armoire - douche - toilette", "toilette - douche - armoire"],
+        "answer": "armoire - douche - toilette"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve la série rangée dans le BON ordre alphabétique :",
+        "options": ["balcon - chambre - cuisine", "cuisine - balcon - chambre", "chambre - cuisine - balcon"],
+        "answer": "balcon - chambre - cuisine"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot est bien orthographié ?",
+        "options": ["le dictionnaire", "le dictionnaire", "le diktionaire"],
+        "answer": "le dictionnaire"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve l'intrus parmi ces pièces de la maison :",
+        "options": ["chambre", "dictionnaire", "cuisine"],
+        "answer": "dictionnaire"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Comment écrit-on correctement la pièce où l'on dort ?",
+        "options": ["la chanbre", "la chambre", "la chabre"],
+        "answer": "la chambre"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot se place entre Maison et Toilette dans l'ordre alphabétique ?",
+        "options": ["Armoire", "Salon", "Véranda"],
+        "answer": "Salon"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve le mot mal orthographié dans la liste : [ papa - oncle - canape - assiette ]",
+        "options": ["papa", "canape", "assiette"],
+        "answer": "canape"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Range par ordre alphabétique : famille - maison - oncle",
+        "options": ["famille - maison - oncle", "oncle - maison - famille", "maison - famille - oncle"],
+        "answer": "famille - maison - oncle"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Choisis l'intrus parmi les objets de cuisine :",
+        "options": ["assiette", "fourchette", "lit"],
+        "answer": "lit"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Complète la phrase : « Pour chercher le sens d'un mot, j'utilise un ... »",
+        "options": ["cahier", "dictionnaire", "livre"],
+        "answer": "dictionnaire"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot s'écrit avec un « ph » ?",
+        "options": ["paragraphe", "phrase", "français"],
+        "answer": "phrase"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quelle est la deuxième lettre du mot « Cuisine » ?",
+        "options": ["C", "U", "I"],
+        "answer": "U"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Range par ordre alphabétique : lit - papa - salon",
+        "options": ["lit - papa - salon", "papa - lit - salon", "salon - papa - lit"],
+        "answer": "lit - papa - salon"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve le mot correctement orthographié :",
+        "options": ["la lecine", "la lessive", "la lecive"],
+        "answer": "la lessive"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Parmi ces mots, lequel a 3 syllabes ?",
+        "options": ["maison", "véranda", "lit"],
+        "answer": "véranda"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Range par ordre alphabétique : arbre - branche - feuille",
+        "options": ["arbre - branche - feuille", "feuille - branche - arbre", "branche - arbre - feuille"],
+        "answer": "arbre - branche - feuille"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve la faute : [ la maison - l'école - la kuisin ]",
+        "options": ["la maison", "l'école", "la kuisin"],
+        "answer": "la kuisin"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot vient juste APRÈS « Parent » dans l'alphabet ?",
+        "options": ["Armoire", "Maison", "Salon"],
+        "answer": "Salon"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Comment écrit-on l'action de ranger ou nettoyer ?",
+        "options": ["le ménag", "le ménage", "le menaje"],
+        "answer": "le ménage"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve le mot au pluriel :",
+        "options": ["la maison", "les assiettes", "le salon"],
+        "answer": "les assiettes"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Range ces mots qui commencent TOUS par A : arbre - armoire - assiette",
+        "options": ["arbre - armoire - assiette", "assiette - arbre - armoire", "armoire - assiette - arbre"],
+        "answer": "arbre - armoire - assiette"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot se trouve rangé entre Douche et Maison dans le dictionnaire ?",
+        "options": ["Armoire", "Famille", "Véranda"],
+        "answer": "Famille"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve le mot de dictée qui contient une faute : « Le salon, le balco, la cuisine. »",
+        "options": ["salon", "balco", "cuisine"],
+        "answer": "balco"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Combien de fautes y a-t-il dans : « La meuble et la kasene sont propres. » ?",
+        "options": ["1", "2", "0"],
+        "answer": "2"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Range par ordre alphabétique : papa - parent - pièce",
+        "options": ["papa - parent - pièce", "pièce - parent - papa", "parent - papa - pièce"],
+        "answer": "papa - parent - pièce"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Range ces mots dans l'ordre INVERSE de l'alphabet (Z à A) : armoire - cuisine - salon",
+        "options": ["salon - cuisine - armoire", "armoire - cuisine - salon", "cuisine - salon - armoire"],
+        "answer": "salon - cuisine - armoire"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quelle est la bonne orthographe au pluriel ?",
+        "options": ["des grand maison", "des grandes maisons", "des grande maison"],
+        "answer": "des grandes maisons"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot est mal classé ici : [ balcon - chambre - douche - cuisine ] ?",
+        "options": ["balcon", "chambre", "cuisine"],
+        "answer": "cuisine"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Combien de lettres consonnes y a-t-il dans le mot « École » ?",
+        "options": ["3", "2", "1"],
+        "answer": "2"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Parmi ces mots, quel est le synonyme de « habitation » ?",
+        "options": ["maison", "école", "voiture"],
+        "answer": "maison"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel est le féminin de « oncle » ?",
+        "options": ["maman", "tante", "sœur"],
+        "answer": "tante"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Range par ordre alphabétique : assiette - canapé - lit - oncle - papa",
+        "options": ["assiette - canapé - lit - oncle - papa", "papa - oncle - lit - canapé - assiette", "canapé - assiette - lit - papa - oncle"],
+        "answer": "assiette - canapé - lit - oncle - papa"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve l'intrus selon le thème du vocabulaire :",
+        "options": ["verbe", "sujet", "véranda"],
+        "answer": "véranda"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Combien de voyelles contient le mot « Dictionnaire » ?",
+        "options": ["4", "5", "6"],
+        "answer": "5"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve le mot qui respecte la règle m devant m, b, p :",
+        "options": ["la chanbre", "la chambre", "la shanbre"],
+        "answer": "la chambre"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot est placé juste avant « Véranda » dans le dictionnaire ?",
+        "options": ["Arbre", "Douche", "Toilette"],
+        "answer": "Toilette"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Choisis la bonne forme : « La case est ... »",
+        "options": ["rond", "ronde", "rondes"],
+        "answer": "ronde"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Complète correctement : « Dans la maison, il y a une ... cuisine. »",
+        "options": ["grand", "grande", "grands"],
+        "answer": "grande"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Quel mot s'écrit avec deux « s » ?",
+        "options": ["assiette", "maison", "cuisine"],
+        "answer": "assiette"
+      },
+      {
+        "category": "Vocabulaire & Orthographe",
+        "question": "Trouve la bonne combinaison :",
+        "options": ["une grande cuisine et un petit salon", "un grande cuisine et une petit salon", "une grand cuisine et un petite salon"],
+        "answer": "une grande cuisine et un petit salon"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Remets les mots dans l'ordre : [ voiture - lave - Papa - la ]",
+        "options": ["Papa lave la voiture.", "Voiture lave la Papa.", "La lave voiture Papa."],
+        "answer": "Papa lave la voiture."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Ali marche au ballon. », quel est le VERBE ?",
+        "options": ["Ali", "marche", "ballon"],
+        "answer": "marche"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Maman prépare le repas. », qui est le SUJET ?",
+        "options": ["Maman", "prépare", "le repas"],
+        "answer": "Maman"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Forme une phrase correcte : [ suce - Je - orange - une ]",
+        "options": ["Orange suce une je.", "Je suce une orange.", "Une orange je suce."],
+        "answer": "Je suce une orange."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quel est le verbe dans : « La case de mon père est ronde. » ?",
+        "options": ["case", "père", "est"],
+        "answer": "est"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve le Sujet dans : « Le bébé dort. »",
+        "options": ["Le bébé", "dort", "le"],
+        "answer": "Le bébé"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quel est le Verbe dans : « Papa achète les cahiers. » ?",
+        "options": ["Papa", "achète", "les cahiers"],
+        "answer": "achète"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Complète la phrase avec le bon sujet : « ... prépare le repas. »",
+        "options": ["Maman", "Le canapé", "La voiture"],
+        "answer": "Maman"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Remets dans l'ordre : [ lave - ma mère - le bébé ]",
+        "options": ["Lave le bébé ma mère.", "Ma mère lave le bébé.", "Le bébé ma mère lave."],
+        "answer": "Ma mère lave le bébé."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Alma rentre de l'école. », que fait Alma (le verbe) ?",
+        "options": ["Alma", "rentre", "école"],
+        "answer": "rentre"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Qui fait l'action dans : « Les enfants regardent la télévision. » ?",
+        "options": ["Les enfants", "la télévision", "regardent"],
+        "answer": "Les enfants"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans la phrase « Je lave ma voiture. », quel est le sujet ?",
+        "options": ["Je", "lave", "voiture"],
+        "answer": "Je"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve le Verbe dans : « Rita est au marché. »",
+        "options": ["Rita", "est", "marché"],
+        "answer": "est"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Remets dans l'ordre : [ voyage - en - j'irai ]",
+        "options": ["j'irai en voyage", "en voyage j'irai", "voyage j'irai en"],
+        "answer": "j'irai en voyage"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quel est le complément dans : « Jean lit un dictionnaire. » ?",
+        "options": ["Jean", "lit", "un dictionnaire"],
+        "answer": "un dictionnaire"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « La maison est très grande. », le mot « maison » est :",
+        "options": ["le Sujet", "le Verbe", "le Complément"],
+        "answer": "le Sujet"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quel est l'élément essentiel qui indique l'action dans une phrase ?",
+        "options": ["Le sujet", "Le verbe", "Le point"],
+        "answer": "Le verbe"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Forme une phrase : [ fait - Maman - le ménage ]",
+        "options": ["Maman fait le ménage.", "Le ménage Maman fait.", "Fait Maman le ménage."],
+        "answer": "Maman fait le ménage."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Ali et Jean jouent au ballon. », quel est le sujet ?",
+        "options": ["Ali et Jean", "jouent", "au ballon"],
+        "answer": "Ali et Jean"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quel mot est le verbe dans : « Elle range la maison. » ?",
+        "options": ["Elle", "range", "maison"],
+        "answer": "range"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Les enfants regardent la télévision. », identifie le COMPLÉMENT :",
+        "options": ["Les enfants", "regardent", "la télévision"],
+        "answer": "la télévision"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve le rôle de « Alma » dans : « Alma rentre de l'école. »",
+        "options": ["C'est le Sujet", "C'est le Verbe", "C'est le Complément"],
+        "answer": "C'est le Sujet"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Mes parents sont au champ. », que représente « sont » ?",
+        "options": ["Le Sujet", "Le Verbe", "Le Complément"],
+        "answer": "Le Verbe"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Sélectionne l'analyse correcte de : « Jean achète les livres. »",
+        "options": ["Sujet: Jean | Verbe: achète | Complément: les livres", "Sujet: les livres | Verbe: Jean | Complément: achète", "Sujet: achète | Verbe: les livres | Complément: Jean"],
+        "answer": "Sujet: Jean | Verbe: achète | Complément: les livres"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quelle phrase a la structure Sujet + Verbe + Complément ?",
+        "options": ["Papa lave la voiture.", "La voiture lave Papa.", "Lave Papa voiture."],
+        "answer": "Papa lave la voiture."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Les assiettes sont dans l'armoire. », le verbe est :",
+        "options": ["assiettes", "sont", "armoire"],
+        "answer": "sont"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve la phrase correcte :",
+        "options": ["Dans notre maison, il y a une grande cuisine.", "Une grande cuisine y a il dans notre maison.", "Dans maison notre grande cuisine une y a."],
+        "answer": "Dans notre maison, il y a une grande cuisine."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quel est le Complément dans : « Maman fait la lessive. » ?",
+        "options": ["Maman", "fait", "la lessive"],
+        "answer": "la lessive"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Identifie le Sujet dans : « La petite fille suce une orange. »",
+        "options": ["La petite fille", "suce", "une orange"],
+        "answer": "La petite fille"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quelle est la nature du groupe de mots « de l'école » dans : « Alma rentre de l'école. » ?",
+        "options": ["Sujet", "Verbe", "Complément"],
+        "answer": "Complément"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Rita achète les cahiers au marché. », quel est le Verbe ?",
+        "options": ["Rita", "achète", "au marché"],
+        "answer": "achète"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Complète la phrase avec un Verbe approprié : « Ali ... dans sa maison. »",
+        "options": ["est", "maison", "grande"],
+        "answer": "est"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Coche la phrase où le Sujet est composé de deux personnes :",
+        "options": ["Ali et Jean jouent au ballon.", "Jean achète les livres.", "Alma rentre de l'école."],
+        "answer": "Ali et Jean jouent au ballon."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Je suce une orange. », que représente « une orange » ?",
+        "options": ["Le Sujet", "Le Verbe", "Le Complément"],
+        "answer": "Le Complément"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Identifie le Verbe dans : « Maman range la maison. »",
+        "options": ["Maman", "range", "la maison"],
+        "answer": "range"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « La case de mon père est ronde et propre. », quel est le Sujet ?",
+        "options": ["La case de mon père", "est", "ronde et propre"],
+        "answer": "La case de mon père"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Complète avec un Complément : « Les enfants regardent ... »",
+        "options": ["jouent", "la télévision", "dorment"],
+        "answer": "la télévision"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve l'intrus (ce qui n'est pas un verbe) :",
+        "options": ["lave", "prépare", "armoire"],
+        "answer": "armoire"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Hier, Jean a acheté les livres. », le mot « Jean » est :",
+        "options": ["le Sujet", "le Verbe", "le Complément"],
+        "answer": "le Sujet"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Sélectionne la phrase où le Verbe est « sont » :",
+        "options": ["Mes parents sont au champ.", "Maman prépare le repas.", "Je vais à l'école."],
+        "answer": "Mes parents sont au champ."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Analyse complète : Dans « Les assiettes sont dans l'armoire. »",
+        "options": ["Sujet: Les assiettes | Verbe: sont | Complément: dans l'armoire", "Sujet: Armoire | Verbe: assiettes | Complément: sont", "Sujet: sont | Verbe: Les assiettes | Complément: armoire"],
+        "answer": "Sujet: Les assiettes | Verbe: sont | Complément: dans l'armoire"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve l'erreur d'analyse dans : « Jean achète les livres et les cahiers. »",
+        "options": ["\"Jean\" est le Sujet.", "\"achète\" est le Complément (Faux ! C'est le Verbe).", "\"les livres et les cahiers\" est le Complément."],
+        "answer": "\"achète\" est le Complément (Faux ! C'est le Verbe)."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quelle phrase a DEUX verbes ?",
+        "options": ["Maman prépare le repas et fait la lessive.", "Papa lave la grande voiture.", "Les enfants regardent la télévision."],
+        "answer": "Maman prépare le repas et fait la lessive."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Dans notre maison, il y a une grande cuisine. », quel est le rôle de « cuisine » ?",
+        "options": ["Sujet", "Verbe", "Complément (ou attribut/nom)"],
+        "answer": "Complément (ou attribut/nom)"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quelle phrase est mal construite ?",
+        "options": ["Alma rentre de l'école.", "L'école rentre de Alma.", "Je suce une orange."],
+        "answer": "L'école rentre de Alma."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve la phrase où le groupe nominal sujet est le plus long :",
+        "options": ["La grande case de mon père est ronde.", "Ali marche.", "Je mange."],
+        "answer": "La grande case de mon père est ronde."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Maman prépare le repas, fait la lessive et range la maison. », combien y a-t-il d'actions (verbes) ?",
+        "options": ["2", "3", "4"],
+        "answer": "3"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Identifie la phrase passive ou inversée ayant le bon sens :",
+        "options": ["La voiture est lavée par Papa.", "Papa est lavé par la voiture.", "La voiture lave Papa."],
+        "answer": "La voiture est lavée par Papa."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Hier, Rita est allée au marché. », le mot « au marché » répond à la question :",
+        "options": ["Qui ?", "Où ?", "Quand ?"],
+        "answer": "Où ?"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans la phrase « Ma mère lave le bébé. », si on remplace « Ma mère » par « Elle », la phrase devient :",
+        "options": ["Elle lave le bébé.", "Le bébé lave elle.", "Elle le bébé lave."],
+        "answer": "Elle lave le bébé."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve la phrase où le verbe n'est PAS un verbe d'action :",
+        "options": ["La maison est grande.", "Maman fait la lessive.", "Papa lave la voiture."],
+        "answer": "La maison est grande."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quelle est la bonne substitution du sujet : « Ali et Jean jouent au ballon » ?",
+        "options": ["Ils jouent au ballon.", "Elle joue au ballon.", "Nous jouons au ballon."],
+        "answer": "Ils jouent au ballon."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Je vais à l'école. », quelle est la fonction de « à l'école » ?",
+        "options": ["Sujet", "Verbe", "Complément"],
+        "answer": "Complément"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Sélectionne la phrase où Sujet, Verbe et Complément sont tous au pluriel :",
+        "options": ["Les mamans préparent des repas.", "La maman prépare les repas.", "Maman prépare le repas."],
+        "answer": "Les mamans préparent des repas."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve l'analyse EXACTE de : « Mes parents sont au champ. »",
+        "options": ["Sujet: Mes parents | Verbe: sont | Complément: au champ", "Sujet: champ | Verbe: parents | Complément: sont", "Sujet: sont | Verbe: au champ | Complément: Mes parents"],
+        "answer": "Sujet: Mes parents | Verbe: sont | Complément: au champ"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans « Maman fait le ménage. », si on supprime le complément, la phrase reste-t-elle :",
+        "options": ["« Maman fait. » (phrase incomplète)", "Parfaite et complète", "Un verbe seul"],
+        "answer": "« Maman fait. » (phrase incomplète)"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Coche la phrase dont le complément est un lieu :",
+        "options": ["Rita est au marché.", "Jean achète un livre.", "Je suce une orange."],
+        "answer": "Rita est au marché."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Dans la phrase « Dans la cuisine, maman prépare le repas. », où se trouve le sujet ?",
+        "options": ["Au tout début", "Au milieu (maman)", "À la fin"],
+        "answer": "Au milieu (maman)"
+      },
+      {
+        "category": "Grammaire",
+        "question": "Quelle phrase contient un Sujet, un Verbe et DEUX Compléments ?",
+        "options": ["Hier, Jean a acheté des livres au marché.", "Jean achète des livres.", "Jean est au marché."],
+        "answer": "Hier, Jean a acheté des livres au marché."
+      },
+      {
+        "category": "Grammaire",
+        "question": "Trouve la phrase correcte où le verbe s'accorde bien avec le sujet pluriel :",
+        "options": ["Les enfants regardent la télévision.", "Les enfants regarde la télévision.", "Les enfants regardes la télévision."],
+        "answer": "Les enfants regardent la télévision."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Quel signe de ponctuation met-on à la fin d'une phrase simple ?",
+        "options": ["Une virgule ( , )", "Un point ( . )", "Un tiret ( - )"],
+        "answer": "Un point ( . )"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Un texte commence généralement par un :",
+        "options": ["Titre", "Point", "Verbe"],
+        "answer": "Titre"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Par quoi commence TOUJOURS une phrase ?",
+        "options": ["Une minuscule", "Une lettre MAJUSCULE", "Une virgule"],
+        "answer": "Une lettre MAJUSCULE"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Quel signe de ponctuation est une virgule ?",
+        "options": [",", ".", "-"],
+        "answer": ","
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Lequel de ces éléments est un constituant du texte ?",
+        "options": ["La phrase", "La cuisine", "Le canapé"],
+        "answer": "La phrase"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve la majuscule dans le mot : « Maman »",
+        "options": ["M", "a", "n"],
+        "answer": "M"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Que met-on entre les mots pour les séparer dans une liste ?",
+        "options": ["Des virgules ( ou tirets )", "Des points", "Des images"],
+        "answer": "Des virgules ( ou tirets )"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve la phrase qui a un point à la fin :",
+        "options": ["Ali est dans sa maison.", "Ali est dans sa maison", "Ali est dans sa maison,"],
+        "answer": "Ali est dans sa maison."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Combien de mots y a-t-il dans la phrase : « Je vais à l'école. » ?",
+        "options": ["3", "4", "5"],
+        "answer": "4"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Un paragraphe est composé de plusieurs :",
+        "options": ["Phrases", "Titres", "Livres"],
+        "answer": "Phrases"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Quel signe sert à poser une question ?",
+        "options": ["Le point ( . )", "Le point d'interrogation ( ? )", "La virgule ( , )"],
+        "answer": "Le point d'interrogation ( ? )"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Parmi ces choix, lequel est un TITRE possible ?",
+        "options": ["La maison de Papa", "Maman fait la lessive.", ", . -"],
+        "answer": "La maison de Papa"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Quel symbole indique la fin absolue d'une phrase ?",
+        "options": ["Le point ( . )", "La virgule ( , )", "L'espace"],
+        "answer": "Le point ( . )"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Une phrase doit avoir du sens. Laquelle a du sens ?",
+        "options": ["Papa lave la voiture.", "Voiture lave Papa la.", "Lave la Papa voiture."],
+        "answer": "Papa lave la voiture."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Dans un texte, où se place le titre ?",
+        "options": ["En haut du texte", "À la fin du texte", "Au milieu d'une phrase"],
+        "answer": "En haut du texte"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Que manque-t-il à ce groupe de mots : « la maison est grande » ?",
+        "options": ["La majuscule (L) et le point (.)", "Des virgules", "Un titre"],
+        "answer": "La majuscule (L) et le point (.)"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Lequel de ces mots est un signe de ponctuation ?",
+        "options": ["Virgule", "Armoire", "Verbe"],
+        "answer": "Virgule"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Coche l'élément qui n'est PAS un constituant du texte :",
+        "options": ["Le paragraphe", "Le titre", "Le balai"],
+        "answer": "Le balai"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Combien de phrases y a-t-il ici : « Maman prépare. Papa lit. » ?",
+        "options": ["1", "2", "3"],
+        "answer": "2"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Par quoi se termine une phrase affirmative ?",
+        "options": ["Un point ( . )", "Une virgule ( , )", "Une lettre"],
+        "answer": "Un point ( . )"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Coche la liste des CONSTITUANTS D'UN TEXTE :",
+        "options": ["Le titre, la phrase, le paragraphe, les mots", "Le sujet, le verbe, le complément", "La cuisine, la douche, le salon"],
+        "answer": "Le titre, la phrase, le paragraphe, les mots"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Dans « Maman prépare le repas [ ] fait la lessive [ ] et range la maison. », que met-on dans les crochets ?",
+        "options": ["Des points ( . )", "Des virgules ( , )", "Des tirets ( - )"],
+        "answer": "Des virgules ( , )"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Combien de phrases y a-t-il dans : « Ali est dans sa maison. Il mange une orange. » ?",
+        "options": ["1", "2", "3"],
+        "answer": "2"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve la phrase correctement ponctuée :",
+        "options": ["Maman prépare le repas.", "maman prépare le repas", "Maman prépare le repas,"],
+        "answer": "Maman prépare le repas."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Pourquoi utilise-t-on une virgule dans une phrase ?",
+        "options": ["Pour terminer la phrase", "Pour faire une courte pause ou séparer des mots", "Pour indiquer le titre"],
+        "answer": "Pour faire une courte pause ou séparer des mots"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Parmi ces ensembles, lequel forme un PARAGRAPHE ?",
+        "options": ["Plusieurs phrases organisées qui parlent de la même idée.", "Une liste de mots au hasard.", "Un seul point."],
+        "answer": "Plusieurs phrases organisées qui parlent de la même idée."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Quels sont les constituants d'une PHRASE ?",
+        "options": ["Des lettres qui forment des mots.", "Des mots ordonnés avec une majuscule et un point.", "Des paragraphes."],
+        "answer": "Des mots ordonnés avec une majuscule et un point."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve l'erreur de ponctuation : « Hier , Jean a acheté les livres . »",
+        "options": ["Il y a une majuscule au début.", "La virgule et le point sont bien placés, pas d'erreur.", "Il manque un titre."],
+        "answer": "La virgule et le point sont bien placés, pas d'erreur."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Dans un texte, à quoi sert le TITRE ?",
+        "options": ["À terminer l'histoire.", "À indiquer le sujet principal du texte.", "À remplacer les points."],
+        "answer": "À indiquer le sujet principal du texte."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Combien de mots composent cette phrase : « La case de mon père est ronde. » ?",
+        "options": ["5", "7", "8"],
+        "answer": "7"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Quelle phrase utilise BIEN la virgule ?",
+        "options": ["Dans mon sac, j'ai des livres, des cahiers et un stylo.", "Dans, mon sac j'ai des livres des cahiers.", "Dans mon sac j'ai, des livres des, cahiers."],
+        "answer": "Dans mon sac, j'ai des livres, des cahiers et un stylo."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Coche la proposition exacte :",
+        "options": ["Une phrase peut commencer par une minuscule.", "Un texte est formé de paragraphes, eux-mêmes formés de phrases.", "Le point se met au début de la phrase."],
+        "answer": "Un texte est formé de paragraphes, eux-mêmes formés de phrases."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Laquelle de ces suites de mots n'est PAS une phrase ?",
+        "options": ["Alma rentre de l'école.", "Maison la grande cuisine est.", "Je suce une orange."],
+        "answer": "Maison la grande cuisine est."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Où met-on la majuscule dans une phrase ?",
+        "options": ["À la fin", "Au tout premier mot (la première lettre)", "Sur chaque mot"],
+        "answer": "Au tout premier mot (la première lettre)"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve le signe de ponctuation manquant : « Où vas-tu [ ] »",
+        "options": [".", "?", ","],
+        "answer": "?"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Dans le cahier, « Constituants d'un texte » regroupe :",
+        "options": ["Le titre, la phrase, le paragraphe, le mot", "La cuisine, la douche", "Le présent et le futur"],
+        "answer": "Le titre, la phrase, le paragraphe, le mot"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Combien de phrases comporte ce texte : « Maman prépare le repas. Elle fait la lessive. Puis elle range. » ?",
+        "options": ["2", "3", "4"],
+        "answer": "3"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Que signifie « ordonner les mots pour former une phrase » ?",
+        "options": ["Les ranger par ordre alphabétique.", "Les placer dans le bon ordre pour que la phrase ait du sens.", "Mettre des majuscules partout."],
+        "answer": "Les placer dans le bon ordre pour que la phrase ait du sens."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Quel symbole sépare les mots dans la dictée du cahier : salon - chambre - cuisine ?",
+        "options": ["Le point", "Le tiret ( - )", "La virgule"],
+        "answer": "Le tiret ( - )"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve la phrase incomplète :",
+        "options": ["Dans notre maison il y a...", "Je vais à l'école.", "Maman fait la lessive."],
+        "answer": "Dans notre maison il y a..."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Choisis le texte parfaitement structuré et ponctué :",
+        "options": ["La Maison\nDans notre maison, il y a une grande cuisine. Maman y prépare le repas.", "La maison dans notre maison il y a une grande cuisine maman prépare le repas.", "La Maison. Dans notre maison? il y a une grande cuisine,"],
+        "answer": "La Maison\nDans notre maison, il y a une grande cuisine. Maman y prépare le repas."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "« Un groupe de mots ordonnés qui commence par une majuscule et se termine par un point » est la définition de :",
+        "options": ["Un mot", "Un paragraphe", "Une phrase"],
+        "answer": "Une phrase"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Analyse de texte : Combien de paragraphes contient un texte avec un titre et deux blocs séparés ?",
+        "options": ["1", "2 paragraphes", "0"],
+        "answer": "2 paragraphes"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve TOUTES les erreurs dans : « hier ali est dans sa maison »",
+        "options": ["Il manque juste un mot.", "Il manque la majuscule à \"Hier\", la majuscule à \"Ali\" et le point à la fin.", "Il n'y a pas d'erreur."],
+        "answer": "Il manque la majuscule à \"Hier\", la majuscule à \"Ali\" et le point à la fin."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Identifie le constituant du texte qui est le plus PETIT :",
+        "options": ["Le paragraphe", "La phrase", "Le mot"],
+        "answer": "Le mot"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve la phrase où les signes de ponctuation sont PARFAITEMENT utilisés :",
+        "options": ["Hier, Jean a acheté les livres et les cahiers.", "Hier Jean, a acheté les livres et, les cahiers.", "Hier Jean a acheté les livres et les cahiers,"],
+        "answer": "Hier, Jean a acheté les livres et les cahiers."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Pourquoi le mot « Jean » prend-il une majuscule au milieu d'une phrase ?",
+        "options": ["Parce que c'est le premier mot.", "Parce que c'est un nom propre (un prénom).", "Parce qu'il y a un point devant."],
+        "answer": "Parce que c'est un nom propre (un prénom)."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Si on retire les points d'un paragraphe, que se passe-t-il ?",
+        "options": ["Les mots changent d'ordre.", "On ne sait plus où s'arrêtent les phrases et le texte devient difficile à lire.", "Le titre disparaît."],
+        "answer": "On ne sait plus où s'arrêtent les phrases et le texte devient difficile à lire."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Combien de phrases y a-t-il dans cet extrait : « Rita est au marché. Elle achète des fruits, des légumes et des assiettes. Elle rentre à la maison. » ?",
+        "options": ["2", "3 phrases", "4"],
+        "answer": "3 phrases"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Parmi ces propositions, laquelle forme un VRAI paragraphe ?",
+        "options": ["Chaque vendredi, nous avons un contrôle hebdomadaire. L'enseignant dicte des mots et nous faisons de la grammaire.", "Salon chambre cuisine douche armoire lit.", "Maman prépare. Papa lave. Rita achète."],
+        "answer": "Chaque vendredi, nous avons un contrôle hebdomadaire. L'enseignant dicte des mots et nous faisons de la grammaire."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Que remplace la virgule dans une énumération (ex: un cahier, un livre, un stylo) ?",
+        "options": ["Le mot \"et\" (sauf pour le dernier objet)", "Le point final", "La majuscule"],
+        "answer": "Le mot \"et\" (sauf pour le dernier objet)"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Dans le titre « Les Connaissances de Français », pourquoi chaque mot important peut avoir une majuscule ?",
+        "options": ["Parce que c'est une dictée.", "Parce que c'est un titre de leçon ou d'ouvrage.", "C'est une faute."],
+        "answer": "Parce que c'est un titre de leçon ou d'ouvrage."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Quelle est la différence entre une PHRASE et un PARAGRAPHE ?",
+        "options": ["La phrase est plus longue que le paragraphe.", "Le paragraphe rassemble plusieurs phrases qui développent une même idée.", "Il n'y a aucune différence."],
+        "answer": "Le paragraphe rassemble plusieurs phrases qui développent une même idée."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Quelle ponctuation convient à cette phrase exclamative : « Quelle belle maison [ ] » ?",
+        "options": [".", "!", ","],
+        "answer": "!"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve l'intrus parmi les constituants de la langue française :",
+        "options": ["Le mot", "Le paragraphe", "Le cahier"],
+        "answer": "Le cahier"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Combien de majuscules faut-il dans cette phrase : « demain, alma et jean iront à yaoundé. » ?",
+        "options": ["2", "4", "1"],
+        "answer": "4"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Parmi ces suites, laquelle respecte la hiérarchie du texte (du plus petit au plus grand) ?",
+        "options": ["Lettre -> Mot -> Phrase -> Paragraphe -> Texte", "Texte -> Paragraphe -> Phrase -> Mot", "Phrase -> Mot -> Lettre -> Texte"],
+        "answer": "Lettre -> Mot -> Phrase -> Paragraphe -> Texte"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Coche la phrase qui contient une FAUTE de ponctuation :",
+        "options": ["Maman prépare le repas.", ".Ali est dans sa maison", "Je vais à l'école."],
+        "answer": ".Ali est dans sa maison"
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Que signifie « encadrer » ou « entourer » les constituants d'un texte dans un exercice ?",
+        "options": ["Effacer les mots.", "Mettre une ligne fermée tout autour du mot (ex: le titre, la phrase).", "Souligner sous le mot."],
+        "answer": "Mettre une ligne fermée tout autour du mot (ex: le titre, la phrase)."
+      },
+      {
+        "category": "Ponctuation & Texte",
+        "question": "Trouve la phrase correctement rédigée et ponctuée :",
+        "options": ["Hier, Jean a acheté les livres. Rita est au marché.", "hier Jean a acheté les livres, rita est au marché.", "Hier, jean a acheté les livres. rita est au marché"],
+        "answer": "Hier, Jean a acheté les livres. Rita est au marché."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Le mot « Demain » indique :",
+        "options": ["Le Présent (maintenant)", "Le Futur (après)", "Le Passé (hier)"],
+        "answer": "Le Futur (après)"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Le mot « Maintenant » indique :",
+        "options": ["Le Présent", "Le Futur", "Le Passé"],
+        "answer": "Le Présent"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "« Aujourd'hui, je mange. » C'est une phrase au :",
+        "options": ["Présent", "Futur", "Passé"],
+        "answer": "Présent"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Le mot « Hier » indique :",
+        "options": ["Le Présent", "Le Futur", "Le Passé"],
+        "answer": "Le Passé"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète la phrase : « ... , j'irai en voyage. »",
+        "options": ["Demain", "Maintenant", "Hier"],
+        "answer": "Demain"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète la phrase : « ... , je mange mon repas. »",
+        "options": ["Demain", "Maintenant", "L'année dernière"],
+        "answer": "Maintenant"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Si une action se passe EN CE MOMENT, c'est :",
+        "options": ["Le Présent", "Le Futur", "Le Passé"],
+        "answer": "Le Présent"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Si une action va se passer PLUS TARD, c'est :",
+        "options": ["Le Présent", "Le Futur", "Le Passé"],
+        "answer": "Le Futur"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "« Je vais à l'école. » indique une action :",
+        "options": ["Passée", "Présente ou proche dans le temps", "Très ancienne"],
+        "answer": "Présente ou proche dans le temps"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Quel mot est un indicateur du FUTUR ?",
+        "options": ["Plus tard / Demain", "Hier", "En ce moment"],
+        "answer": "Plus tard / Demain"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Quel mot est un indicateur du PRÉSENT ?",
+        "options": ["En ce moment / Aujourd'hui", "Demain", "La semaine prochaine"],
+        "answer": "En ce moment / Aujourd'hui"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Dans « Demain, j'irai en voyage », quel temps est utilisé ?",
+        "options": ["Présent", "Futur", "Passé"],
+        "answer": "Futur"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Dans « Maintenant, je mange », quel temps est utilisé ?",
+        "options": ["Présent", "Futur", "Passé"],
+        "answer": "Présent"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Choisis l'indicateur du temps présent :",
+        "options": ["Actuellement", "Demain", "Bientôt"],
+        "answer": "Actuellement"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "« Demain, Papa lavera la voiture. » est au :",
+        "options": ["Présent", "Futur", "Passé"],
+        "answer": "Futur"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "L'expression « Je suis en train de manger » se déroule au :",
+        "options": ["Présent", "Futur", "Passé"],
+        "answer": "Présent"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète : « ... , nous sommes en classe. »",
+        "options": ["Maintenant", "Demain", "L'an prochain"],
+        "answer": "Maintenant"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète : « ... , Alma ira à l'école. »",
+        "options": ["Hier", "Demain", "En ce moment"],
+        "answer": "Demain"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "« Plus tard » est synonyme de :",
+        "options": ["Aujourd'hui", "Dans le futur", "Hier"],
+        "answer": "Dans le futur"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Le contrôle a lieu « la semaine prochaine ». C'est dans le :",
+        "options": ["Présent", "Futur", "Passé"],
+        "answer": "Futur"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "« Demain, j'irai en voyage. » Cette phrase est au :",
+        "options": ["Présent", "Futur"],
+        "answer": "Futur"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "« Maintenant, je mange. » Cette phrase est au :",
+        "options": ["Présent", "Futur"],
+        "answer": "Présent"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "La phrase « Je vais à l'école » exprime le futur proche. Vrai ou Faux ?",
+        "options": ["Vrai", "Faux"],
+        "answer": "Vrai"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Transforme la phrase au futur : « Je mange. » -> « Demain, je ... »",
+        "options": ["mangeais", "mangerai", "mange"],
+        "answer": "mangerai"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Transforme au présent : « J'irai en voyage. » -> « Maintenant, je ... »",
+        "options": ["voyage", "irai", "voyagerai"],
+        "answer": "voyage"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Associe correctement l'indicateur et le temps : « Hier »",
+        "options": ["Passé", "Présent", "Futur"],
+        "answer": "Passé"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Associe correctement l'indicateur et le temps : « Demain »",
+        "options": ["Passé", "Présent", "Futur"],
+        "answer": "Futur"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Trouve la phrase qui est au PRÉSENT :",
+        "options": ["Maman prépare le repas maintenant.", "Demain, j'irai en voyage.", "Papa va laver la voiture plus tard."],
+        "answer": "Maman prépare le repas maintenant."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Trouve la phrase qui est au FUTUR :",
+        "options": ["Ali est dans sa maison.", "Demain, Rita ira au marché.", "Ma mère lave le bébé maintenant."],
+        "answer": "Demain, Rita ira au marché."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète la phrase : « Maintenant, ma mère ... le bébé. »",
+        "options": ["lave", "lavera", "a lavé"],
+        "answer": "lave"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète la phrase : « Demain, ma mère ... le bébé. »",
+        "options": ["lave", "lavera", "lavait"],
+        "answer": "lavera"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Dans quel temps est conjugué le verbe souligné : « Rita est au marché. » ?",
+        "options": ["Présent", "Futur"],
+        "answer": "Présent"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Dans quel temps est le verbe : « Jean achètera des livres. » ?",
+        "options": ["Présent", "Futur"],
+        "answer": "Futur"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète avec le bon verbe au futur : « Plus tard, les enfants ... la télévision. »",
+        "options": ["regardent", "regarderont", "ont regardé"],
+        "answer": "regarderont"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète avec le bon verbe au présent : « En ce moment, Papa ... la voiture. »",
+        "options": ["lave", "lavera", "lavait"],
+        "answer": "lave"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "« Aujourd'hui nous étudions, demain nous ... »",
+        "options": ["jouons", "jouerons", "avons joué"],
+        "answer": "jouerons"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Coche la phrase qui exprime ce qui se passe EN CE MOMENT :",
+        "options": ["Je suis en train de faire mes exercices.", "Demain, j'irai en voyage.", "La semaine prochaine, j'aurai la composition."],
+        "answer": "Je suis en train de faire mes exercices."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Coche la phrase qui exprime un projet à venir :",
+        "options": ["Demain, nous irons à l'école AMIHDAF.", "Maintenant, Alma rentre de l'école.", "Ali est dans sa maison."],
+        "answer": "Demain, nous irons à l'école AMIHDAF."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Vrai ou Faux : « Maintenant, j'irai en voyage. » est une phrase correcte.",
+        "options": ["Vrai", "Faux"],
+        "answer": "Faux"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Vrai ou Faux : « Demain, je mange une orange. » utilise un bon indicateur de futur.",
+        "options": ["Vrai", "Faux"],
+        "answer": "Faux"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Associe correctement toute la phrase :",
+        "options": ["Hier -> j'irai en voyage", "Demain -> j'irai en voyage", "Maintenant -> j'irai en voyage"],
+        "answer": "Demain -> j'irai en voyage"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Trouve la transformation correcte au FUTUR de : « Maman prépare le repas. »",
+        "options": ["Demain, Maman préparera le repas.", "Hier, Maman a préparé le repas.", "Maintenant, Maman préparera le repas."],
+        "answer": "Demain, Maman préparera le repas."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Trouve la transformation correcte au PRÉSENT de : « J'irai à l'école. »",
+        "options": ["Maintenant, je vais à l'école.", "Demain, je vais à l'école.", "Hier, je suis allé à l'école."],
+        "answer": "Maintenant, je vais à l'école."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Quelle phrase contient une ERREUR de concordance de temps ?",
+        "options": ["Maintenant, je mange.", "Demain, j'irai en voyage.", "Demain, je mangeais mon repas."],
+        "answer": "Demain, je mangeais mon repas."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Classe les indicateurs de temps dans l'ordre : Passé -> Présent -> Futur",
+        "options": ["Hier -> Maintenant -> Demain", "Demain -> Maintenant -> Hier", "Maintenant -> Hier -> Demain"],
+        "answer": "Hier -> Maintenant -> Demain"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Dans la phrase : « La semaine prochaine, elle aura la composition. », la phrase est au :",
+        "options": ["Passé", "Présent", "Futur"],
+        "answer": "Futur"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Choisis le verbe conjugué au FUTUR :",
+        "options": ["nous faisons", "nous ferons", "nous faisions"],
+        "answer": "nous ferons"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Choisis le verbe conjugué au PRÉSENT :",
+        "options": ["elle range", "elle rangera", "elle a rangé"],
+        "answer": "elle range"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète la phrase pour qu'elle soit logique : « Hier Jean a acheté les livres et demain il ... à la maison. »",
+        "options": ["lit", "lira", "a lu"],
+        "answer": "lira"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Convertis au Futur : « Les enfants regardent la télévision. »",
+        "options": ["Demain, les enfants regarderont la télévision.", "Hier, les enfants ont regardé la télévision.", "En ce moment, les enfants regarderont la télévision."],
+        "answer": "Demain, les enfants regarderont la télévision."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Convertis au Présent : « Demain, nous irons en voyage. »",
+        "options": ["Aujourd'hui, nous allons en voyage.", "Hier, nous sommes allés en voyage.", "Demain, nous allons en voyage."],
+        "answer": "Aujourd'hui, nous allons en voyage."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Identifie le verbe qui est au FUTUR PROCHE :",
+        "options": ["Je mange.", "Je vais manger.", "J'ai mangé."],
+        "answer": "Je vais manger."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Parmi ces phrases, laquelle exprime une certitude dans le futur ?",
+        "options": ["Rita est au marché.", "Rita sera au marché demain à 8h.", "Rita était au marché."],
+        "answer": "Rita sera au marché demain à 8h."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Trouve l'indicateur de temps qui ne convient PAS au Futur :",
+        "options": ["Demain", "Plus tard", "En ce moment"],
+        "answer": "En ce moment"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Quelle est la bonne terminaison du verbe au futur avec « Je » ?",
+        "options": ["-rai", "-ras", "-ront"],
+        "answer": "-rai"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Quelle est la bonne terminaison du verbe au futur avec « Ils / Elles » ?",
+        "options": ["-ra", "-ront", "-rez"],
+        "answer": "-ront"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Analyse la phrase : « Maintenant, Ali est dans sa maison mais demain il ira à l'école. »",
+        "options": ["Elle est toute au présent.", "Elle est toute au futur.", "Elle contient une partie au Présent et une partie au Futur."],
+        "answer": "Elle contient une partie au Présent et une partie au Futur."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Complète la phrase complexe : « Pendant que maman prépare le repas, demain je ... le ménage. »",
+        "options": ["fais", "ferai", "faisait"],
+        "answer": "ferai"
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Coche la phrase qui associe BIEN le temps du verbe et l'indicateur :",
+        "options": ["Maintenant, Alma rentre de l'école.", "Hier, Alma rentrera de l'école.", "Demain, Alma est rentrée de l'école."],
+        "answer": "Maintenant, Alma rentre de l'école."
+      },
+      {
+        "category": "Conjugaison",
+        "question": "Pour réussir sa composition la semaine prochaine, elle dit : « ... , je deviendrai une experte ! »",
+        "options": ["Hier", "Bientôt / Demain", "Autrefois"],
+        "answer": "Bientôt / Demain"
+      }
+    ];
+
+    const questionsData = rawQuestionsData.map((q, id) => {
+      let cIndex = q.options.findIndex(opt => opt.trim() === q.answer.trim());
+      if (cIndex === -1) cIndex = 0;
+      return {
+        id: id + 1,
+        category: q.category,
+        question: q.question,
+        options: q.options,
+        correctIndex: cIndex
+      };
+    });
+
+    // -------------------------------------------------------------
+    // 3. ÉTAT & DYNAMIQUE DU JEU
+    // -------------------------------------------------------------
+    let currentState = 'WELCOME';
+    let currentQuestionIndex = 0;
+    let selectedOption = null;
+    let isAnswered = false;
+    let isCorrect = false;
+    let activeQuestions = [...questionsData];
+    let selectedCategoryFilter = 'Toutes';
+
+    let highScore = localStorage.getItem('quiz_high_score') || 0;
+
+    let score = 0;
+    let streak = 0;
+    let maxStreak = 0;
+    let timer = 30;
+    let timerInterval = null;
+    let selectedTimeLimit = 30;
+
+    const categoriesList = ['Toutes', ...new Set(questionsData.map(q => q.category))];
+
+    // -------------------------------------------------------------
+    // 4. GESTION DU MINUTEUR
+    // -------------------------------------------------------------
+    function setTimeLimit(seconds) {
+      selectedTimeLimit = seconds;
+      render();
+    }
+
+    function startTimer() {
+      clearInterval(timerInterval);
+      timer = selectedTimeLimit;
+      const timerBar = document.getElementById('timer-bar');
+      const timerText = document.getElementById('timer-text');
+
+      timerInterval = setInterval(() => {
+        if (isAnswered) {
+          clearInterval(timerInterval);
+          return;
+        }
+
+        timer--;
+        if (timerText) timerText.innerText = timer + "s";
+        if (timerBar) {
+          const pct = (timer / selectedTimeLimit) * 100;
+          timerBar.style.width = pct + "%";
+          if (timer <= 5) {
+            timerBar.className = "h-full bg-red-500 transition-all duration-1000";
+            playSound('tick');
+          }
+        }
+
+        if (timer <= 0) {
+          clearInterval(timerInterval);
+          timeOut();
+        }
+      }, 1000);
+    }
+
+    function timeOut() {
+      if (isAnswered) return;
+      isAnswered = true;
+      selectedOption = -1;
+      isCorrect = false;
+      streak = 0;
+      playSound('wrong');
+      render();
+    }
+
+    // -------------------------------------------------------------
+    // 5. FONCTIONS DE RENDU
+    // -------------------------------------------------------------
+    function filterByCategory(cat) {
+      selectedCategoryFilter = cat;
+      if (cat === 'Toutes') {
+        activeQuestions = [...questionsData];
+      } else {
+        activeQuestions = questionsData.filter(q => q.category === cat);
+      }
+      render();
+    }
+
+    function resetHighScore() {
+      highScore = 0;
+      localStorage.setItem('quiz_high_score', 0);
+      render();
+    }
+
+    function render() {
+      const app = document.getElementById('app');
+
+      if (currentState === 'WELCOME') {
+        app.innerHTML = `
+          <div class="space-y-4 text-center pop-in">
+            <div class="bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-3xl p-6 shadow-xl border-4 border-amber-300">
+              <div class="w-20 h-20 bg-white/20 rounded-full mx-auto flex items-center justify-center text-4xl mb-2 animate-bounce">
+                👑
+              </div>
+              <h1 class="text-3xl font-black drop-shadow">Quiz Magique !</h1>
+              <p class="text-sm font-semibold opacity-90 mt-1">Deviens le champion du français ! 🚀</p>
+              
+              <div class="mt-4 bg-white/20 backdrop-blur rounded-2xl py-2 px-4 inline-flex items-center gap-2 border border-white/30">
+                <span class="text-xl">🏆</span>
+                <span class="text-xs font-black uppercase tracking-wider">Meilleur Score :</span>
+                <span class="text-lg font-black text-yellow-200">${highScore} pts</span>
+              </div>
+              
+              <div class="mt-2">
+                <button onclick="resetHighScore()" class="text-xs font-bold bg-white/10 hover:bg-white/20 text-white px-3 py-1 rounded-xl border border-white/20 transition active:scale-95">
+                  🔄 Réinitialiser le score
+                </button>
+              </div>
+            </div>
+
+            <div class="bg-white/80 backdrop-blur border-4 border-amber-300 rounded-3xl p-4 text-left space-y-2 shadow-md">
+              <h2 class="font-extrabold text-amber-900 flex items-center gap-1 text-sm">
+                ⏱️ Temps par question :
+              </h2>
+              <div class="grid grid-cols-3 gap-2">
+                ${[30, 60, 90].map(t => `
+                  <button onclick="setTimeLimit(${t})" 
+                    class="py-2 rounded-xl font-black text-xs border-2 transition active:scale-95 ${selectedTimeLimit === t ? 'bg-amber-500 text-white border-amber-600' : 'bg-white text-amber-900 border-amber-200 hover:bg-amber-50'}">
+                    ⏱️ ${t} sec
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="bg-white/80 backdrop-blur border-4 border-amber-300 rounded-3xl p-4 text-left space-y-3 shadow-md">
+              <h2 class="font-extrabold text-amber-900 flex items-center gap-1 text-lg">
+                🎯 Choisis ton défi :
+              </h2>
+              <div class="grid grid-cols-1 gap-2">
+                ${categoriesList.map(cat => {
+                  const count = cat === 'Toutes' 
+                    ? questionsData.length 
+                    : questionsData.filter(q => q.category === cat).length;
+                  const isSelected = selectedCategoryFilter === cat;
+                  const activeClass = isSelected 
+                    ? 'bg-amber-500 text-white border-amber-600 scale-[1.02]' 
+                    : 'bg-white text-amber-900 border-amber-200 hover:bg-amber-50';
+                  
+                  return `
+                    <button onclick="filterByCategory('${cat.replace(/'/g, "\\'")}')" 
+                      class="border-2 rounded-2xl p-3 flex items-center justify-between font-extrabold shadow transition transform active:scale-95 ${activeClass}">
+                      <span>${cat === 'Toutes' ? '🌟 Toutes les épreuves' : '📘 ' + cat}</span>
+                      <span class="${isSelected ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-800'} text-xs px-2.5 py-1 rounded-full">${count}</span>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            <button onclick="startQuiz()" class="w-full bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-500 hover:to-green-600 text-white font-black text-2xl py-4 rounded-3xl shadow-lg border-b-4 border-green-700 transform active:scale-95 transition flex items-center justify-center gap-2">
+              <span>C'EST PARTI !</span> 🚀
+            </button>
+            <p class="text-amber-900 text-xs font-bold">⭐ ${activeQuestions.length} questions prêtes à être jouées !</p>
+          </div>
+        `;
+      } 
+      else if (currentState === 'QUIZ') {
+        const q = activeQuestions[currentQuestionIndex];
+        const level = Math.floor(currentQuestionIndex / 5) + 1;
+
+        app.innerHTML = `
+          <div class="space-y-3 pop-in">
+            <div class="bg-white/80 backdrop-blur border-2 border-amber-300 rounded-2xl p-3 shadow-md flex justify-between items-center text-amber-900 font-extrabold text-sm">
+              <button onclick="goWelcome()" class="text-xs bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-300 hover:bg-amber-200">🏠 Menu</button>
+              <div class="flex items-center gap-2">
+                <span class="bg-orange-100 text-orange-900 px-2.5 py-1 rounded-xl border border-orange-300 text-xs">Niv. ${level}</span>
+                <span class="bg-amber-100 text-amber-800 px-3 py-1 rounded-xl border border-amber-300">⭐ ${score} pts</span>
+                ${streak > 1 ? `<span class="bg-orange-500 text-white px-2 py-0.5 rounded-full text-xs animate-bounce">🔥 x${streak}</span>` : ''}
+              </div>
+            </div>
+
+            <div class="bg-amber-100 border-2 border-amber-300 h-6 rounded-full overflow-hidden p-0.5 relative shadow-inner">
+              <div id="timer-bar" class="h-full bg-gradient-to-r from-amber-400 to-orange-500 rounded-full transition-all duration-1000" style="width: 100%;"></div>
+              <span id="timer-text" class="absolute inset-0 flex items-center justify-center text-xs font-black text-amber-900 drop-shadow-sm">${timer}s</span>
+            </div>
+
+            <div class="bg-white border-4 border-amber-300 rounded-3xl p-5 shadow-xl relative">
+              <div class="flex justify-between items-center mb-2">
+                <span class="bg-amber-100 text-amber-800 font-extrabold text-xs px-3 py-1 rounded-full border border-amber-200">
+                  📂 ${q.category}
+                </span>
+                <span class="text-xs font-black text-slate-400">${currentQuestionIndex + 1} / ${activeQuestions.length}</span>
+              </div>
+
+              <div class="flex items-center gap-3 my-3">
+                <button onclick="speakQuestion('${q.question.replace(/'/g, "\\'")}')" class="bg-amber-100 hover:bg-amber-200 p-2.5 rounded-2xl text-3xl flex-shrink-0 animate-bounce-short cursor-pointer transition" title="Écouter la question">
+                  👧
+                </button>
+                <h2 class="text-base font-extrabold text-slate-800 leading-snug">${q.question}</h2>
+              </div>
+
+              <div class="space-y-2 mt-4">
+                ${q.options.map((opt, idx) => {
+                  let btnStyle = "bg-amber-50/50 border-2 border-amber-200 text-slate-700 hover:border-amber-400 hover:bg-amber-100/50";
+                  if (isAnswered) {
+                    if (idx === q.correctIndex) {
+                      btnStyle = "bg-emerald-100 border-4 border-emerald-500 text-emerald-900 font-black scale-[1.02]";
+                    } else if (selectedOption === idx) {
+                      btnStyle = "bg-rose-100 border-4 border-rose-500 text-rose-900 font-black";
+                    } else {
+                      btnStyle = "bg-slate-50 border-2 border-slate-200 text-slate-400 opacity-60";
+                    }
+                  }
+                  return `
+                    <button 
+                      onclick="checkAnswer(${idx})" 
+                      ${isAnswered ? 'disabled' : ''}
+                      class="w-full text-left p-3.5 rounded-2xl flex justify-between items-center font-bold text-sm transition transform active:scale-95 shadow-sm ${btnStyle}">
+                      <span>${opt}</span>
+                      <span class="w-7 h-7 rounded-xl bg-white border-2 border-amber-300 text-amber-800 text-xs font-black flex items-center justify-center flex-shrink-0 ml-2 shadow-xs">${idx + 1}</span>
+                    </button>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+
+            ${isAnswered ? `
+              <div class="bg-white border-4 ${isCorrect ? 'border-emerald-400' : 'border-rose-400'} rounded-3xl p-4 space-y-3 shadow-xl pop-in">
+                ${isCorrect ? `
+                  <div class="text-emerald-600 font-black text-xl flex items-center gap-2">
+                    <span>🎉 BRAVO ! (+10 pts)</span>
+                  </div>
+                ` : `
+                  <div class="text-rose-500 font-black text-xl flex items-center gap-2">
+                    <span>Oups ! ${selectedOption === -1 ? '⏰ Temps écoulé !' : '❌ Dommage !'}</span>
+                  </div>
+                  <div class="bg-amber-50 border-2 border-amber-200 p-2.5 rounded-2xl text-xs text-amber-900 font-bold">
+                    💡 La bonne réponse : <span class="underline">${q.options[q.correctIndex]}</span>
+                  </div>
+                `}
+                <button onclick="nextQuestion()" class="w-full bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 text-white font-black text-lg py-3 rounded-2xl shadow-lg border-b-4 border-orange-700 transform active:scale-95 transition flex items-center justify-center gap-2">
+                  <span>Question Suivante</span> ➡
+                </button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+
+        if (!isAnswered) {
+          startTimer();
+          speakQuestion(q.question);
+        }
+      }
+      else if (currentState === 'END') {
+        const total = activeQuestions.length;
+        const percentage = Math.round((score / (total * 10)) * 100);
+        
+        let badge = "🌟 Apprenti des Mots";
+        let stars = "⭐";
+        if (percentage >= 80) {
+          badge = "🏆 SUPER CHAMPION DU FRANÇAIS !";
+          stars = "⭐⭐⭐";
+        } else if (percentage >= 50) {
+          badge = "🥇 Grand Explorateur !";
+          stars = "⭐⭐";
+        }
+
+        app.innerHTML = `
+          <div class="bg-white border-4 border-amber-300 rounded-3xl p-6 text-center space-y-4 shadow-2xl pop-in">
+            <div class="text-6xl animate-bounce">${stars}</div>
+            <h1 class="text-3xl font-black text-amber-900">MISSION ACCOMPLIE !</h1>
+            
+            <div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 space-y-2">
+              <p class="text-amber-800 font-extrabold text-sm">${badge}</p>
+              <div class="text-4xl font-black text-amber-600">${score} <span class="text-base text-amber-800">pts</span></div>
+              <p class="text-xs text-slate-500 font-bold">Record de combo : 🔥 x${maxStreak}</p>
+            </div>
+
+            <button onclick="goWelcome()" class="w-full bg-gradient-to-r from-emerald-400 to-green-500 hover:from-emerald-500 hover:to-green-600 text-white font-black text-xl py-4 rounded-3xl shadow-lg border-b-4 border-green-700 transform active:scale-95 transition">
+              🔄 Rejouer une partie !
+            </button>
+          </div>
+        `;
+      }
+    }
+
+    // -------------------------------------------------------------
+    // 6. LOGIQUE D'INTERACTION
+    // -------------------------------------------------------------
+    function startQuiz() {
+      currentState = 'QUIZ';
+      currentQuestionIndex = 0;
+      score = 0;
+      streak = 0;
+      maxStreak = 0;
+      isAnswered = false;
+      render();
+    }
+
+    function goWelcome() {
+      clearInterval(timerInterval);
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      currentState = 'WELCOME';
+      render();
+    }
+
+    function checkAnswer(index) {
+      if (isAnswered) return;
+      clearInterval(timerInterval);
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+
+      selectedOption = index;
+      isAnswered = true;
+
+      const q = activeQuestions[currentQuestionIndex];
+      isCorrect = (index === q.correctIndex);
+
+      if (isCorrect) {
+        streak++;
+        if (streak > maxStreak) maxStreak = streak;
+        score += 10 + (streak > 1 ? streak * 2 : 0);
+        
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem('quiz_high_score', highScore);
+        }
+
+        playSound('correct');
+        confetti({ particleCount: 50, spread: 60, origin: { y: 0.7 } });
+      } else {
+        streak = 0;
+        playSound('wrong');
+      }
+
+      render();
+    }
+
+    function nextQuestion() {
+      if (currentQuestionIndex + 1 < activeQuestions.length) {
+        currentQuestionIndex++;
+        isAnswered = false;
+        selectedOption = null;
+        render();
+      } else {
+        currentState = 'END';
+        playSound('win');
+        confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 } });
+        render();
+      }
+    }
+
+    render();
+  </script>
+</body>
+</html>
